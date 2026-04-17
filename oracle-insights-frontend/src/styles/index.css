@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  
+  body {
+    @apply bg-oracle-dark text-oracle-text font-sans;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-oracle-dark;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-oracle-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-oracle-muted;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-oracle-surface border border-oracle-border rounded-lg;
+  }
+
+  .card-glow {
+    @apply card shadow-glow;
+  }
+
+  .btn-primary {
+    @apply bg-oracle-primary text-white px-4 py-2 rounded-lg font-medium;
+    @apply hover:bg-red-700 transition-colors duration-200;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-oracle-surface border border-oracle-border text-oracle-text px-4 py-2 rounded-lg;
+    @apply hover:bg-oracle-border transition-colors duration-200;
+  }
+
+  .input-field {
+    @apply bg-oracle-dark border border-oracle-border rounded-lg px-4 py-2 text-oracle-text;
+    @apply focus:outline-none focus:border-oracle-accent focus:ring-1 focus:ring-oracle-accent;
+    @apply placeholder-oracle-muted;
+  }
+
+  .panel {
+    @apply bg-oracle-surface border-r border-oracle-border h-full;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-dot-active {
+    @apply status-dot bg-oracle-success animate-pulse;
+  }
+
+  .status-dot-waiting {
+    @apply status-dot bg-oracle-muted;
+  }
+
+  .status-dot-error {
+    @apply status-dot bg-oracle-error;
+  }
+
+  .agent-icon {
+    @apply w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold;
+  }
+
+  .glow-border {
+    @apply relative;
+  }
+
+  .glow-border::before {
+    content: '';
+    @apply absolute inset-0 rounded-lg opacity-0 transition-opacity duration-300;
+    background: linear-gradient(45deg, transparent, rgba(0, 194, 255, 0.1), transparent);
+  }
+
+  .glow-border.active::before {
+    @apply opacity-100 animate-pulse-glow;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(90deg, #00C2FF, #F80000);
+  }
+
+  .animate-in {
+    animation: fadeIn 0.3s ease-out, slideUp 0.3s ease-out;
+  }
+}
