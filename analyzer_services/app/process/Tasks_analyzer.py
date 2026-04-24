@@ -1,16 +1,11 @@
-
 from analyzer_services.app.process.ConnectionManager import manager
-from langchain_core.messages import HumanMessage
-from agents.supervisor import team
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.errors import GraphInterrupt
-from schemas import ERPState
 from analyzer_services.app.state import pending_responses
-
 
 from common.common_utl import get_embeddings_model
 import asyncio
 import logging
-import time
 
 # ===============================
 # LOGGING
@@ -21,12 +16,11 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-    
 
-    
 ##memory = MemorySaver()
 ##oracle_app = team.compile(checkpointer=checkpointer)
 get_embeddings_model()
+
 
 # --- Función de Ejecución del Grafo (Lógica Pesada) ---
 async def run_oracle_analysis(thread_id: str, query: str, oracle_app):
@@ -34,6 +28,9 @@ async def run_oracle_analysis(thread_id: str, query: str, oracle_app):
     config = {"configurable": {"thread_id": thread_id}}
     inputs = {"messages": [HumanMessage(content=query)]}
     print(f"🚀 run_oracle_analysis iniciado con thread_id: {thread_id}")
+
+    # Flag para la selección del módulo
+    module_selected = False
 
     try:
         step_agent = 1
@@ -65,38 +62,36 @@ async def run_oracle_analysis(thread_id: str, query: str, oracle_app):
 
                 state = await oracle_app.aget_state(config)
 
-                # --- Pausa si supervisor preguntó y aún no hay módulo ---
-                mensajes = state.values.get("messages", [])
-                pregunta = None
-                for msg in reversed(mensajes):
-                    # --- Buscar pregunta del supervisor
-                    if getattr(msg, "agent", None) == "supervisor" or getattr(msg, "role", None) == "assistant":
-                        pregunta = msg.content
-                        break
-                    # fallback: si hay un GraphInterrupt con tipo 'interrupt' en state
-                if pregunta is None:
-                    # fallback conservador: no tomar el último human message
-                    logger.warning("No se encontró mensaje del supervisor en state.values['messages']")
-                    pregunta = "Por favor selecciona el módulo ERP que deseas analizar."
+                # ── Pedir módulo si no se seleccionó ──
+                if not module_selected:
+                    mensajes = state.values.get("messages", [])
+                    pregunta = None
+                    for msg in reversed(mensajes):
+                        if isinstance(msg, AIMessage):
+                            pregunta = msg.content
+                            break
+                    if pregunta is None:
+                        pregunta = "Por favor selecciona el módulo ERP que deseas analizar."
 
-                logger.info(f"Pregunta inicial del supervisor: {pregunta}")
-                await manager.send_update(thread_id, {
-                    "type": "interrupt",
-                    "agent": "supervisor",
-                    "content": pregunta
-                })
-                # Esperar respuesta en pending_responses...
-                while thread_id not in pending_responses:
-                    await asyncio.sleep(0.5)
-                respuesta = pending_responses.pop(thread_id)
-                print(f"📤 Recuperado de pending_responses[{thread_id}]: {respuesta}")
+                    logger.info(f"Pregunta inicial del supervisor: {pregunta}")
+                    await manager.send_update(thread_id, {
+                        "type": "interrupt",
+                        "agent": "supervisor",
+                        "content": pregunta
+                    })
+                    # Esperar respuesta en pending_responses...
+                    while thread_id not in pending_responses:
+                        await asyncio.sleep(0.5)
+                    respuesta = pending_responses.pop(thread_id)
+                    print(f"📤 Recuperado de pending_responses[{thread_id}]: {respuesta}")
 
-                print(f"🔄 Actualizando estado con erp_module: {respuesta}")
-                await oracle_app.update_state(config, {"erp_module": respuesta})
-                inputs = {"messages": [HumanMessage(content=respuesta)]}
-                new_state = await oracle_app.aget_state(config)
-                print(f"📊 Estado después de update_state: {new_state.values.get('erp_module', 'NO ENCONTRADO')}")
+                    await oracle_app.update_state(config, {"erp_module": respuesta})
+                    inputs = {"messages": [HumanMessage(content=respuesta)]}
+                    module_selected = True
 
+                    continue
+
+                # ── Verificar si terminó ─────
                 if not state.next:
                     filename = f"reporte_{thread_id}.pdf"
                     await manager.send_update(thread_id, {
@@ -112,7 +107,11 @@ async def run_oracle_analysis(thread_id: str, query: str, oracle_app):
                 continue
 
             except GraphInterrupt as gi:
-                pregunta = gi.args[0].value
+                # Manejo de interrupciones provenientes del grafo
+                try:
+                    pregunta = gi.args[0].value
+                except Exception:
+                    pregunta = str(gi)
                 logger.info(f"🤖 Interrupción capturada: {pregunta}")
                 await manager.send_update(thread_id, {
                     "type": "interrupt",
@@ -127,6 +126,10 @@ async def run_oracle_analysis(thread_id: str, query: str, oracle_app):
                 new_state = await oracle_app.aget_state(config)
                 logger.info(f"📊 Estado actualizado: {new_state.values}")
                 inputs = {"messages": [HumanMessage(content=respuesta)]}
+                # Si la interrupción provino del sistema y aún no se había seleccionado módulo, marcarlo
+                if not module_selected:
+                    module_selected = True
+                # Volver a procesar astream con la nueva entrada
                 continue
 
     except Exception as e:
